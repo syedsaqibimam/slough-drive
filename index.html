@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a56db">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Slough Drive">
+<title>Slough Driving Test Practice</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- Install banner (shown when browser suppresses automatic prompt) -->
+<div class="install-banner" id="install-banner" style="display:none">
+  <div class="install-banner-text">
+    <strong>Install app</strong> – add to your home screen for full-screen GPS use
+  </div>
+  <button class="install-banner-btn" id="install-btn" onclick="installApp()">Install</button>
+  <button class="install-banner-close" onclick="document.getElementById('install-banner').style.display='none'">✕</button>
+</div>
+
+<!-- Bottom navigation -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" onclick="showScreen('map')" id="nav-map">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
+    <span>Routes</span>
+  </button>
+  <button class="nav-btn" onclick="showScreen('practice')" id="nav-practice">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <span>Practice</span>
+  </button>
+  <button class="nav-btn" onclick="showScreen('tips')" id="nav-tips">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>Tips</span>
+  </button>
+</nav>
+
+<!-- MAP SCREEN -->
+<div class="screen active" id="screen-map">
+  <div class="top-bar">
+    <div class="top-bar-title">
+      <div class="logo-dot"></div>
+      Slough Test Routes
+    </div>
+    <button class="gps-btn" id="gps-btn" onclick="toggleGPS()" title="Toggle GPS tracking">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+    </button>
+  </div>
+
+  <div class="route-selector">
+    <div class="route-tabs" id="route-tabs"></div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="route-info-panel" id="route-panel">
+    <div class="route-panel-header">
+      <div>
+        <div class="route-name" id="panel-route-name">Select a route</div>
+        <div class="route-meta" id="panel-route-meta"></div>
+      </div>
+      <button class="start-btn" id="start-btn" onclick="startNavigation()">▶ Start</button>
+    </div>
+    <div class="hazard-list" id="hazard-list"></div>
+  </div>
+</div>
+
+<!-- PRACTICE SCREEN -->
+<div class="screen" id="screen-practice">
+  <div class="top-bar">
+    <div class="top-bar-title"><div class="logo-dot"></div>Practice Session</div>
+  </div>
+  <div class="practice-content">
+    <div class="fault-counter-card">
+      <div class="fault-title">Driving faults (minors)</div>
+      <div class="fault-number" id="minor-count">0</div>
+      <div class="fault-limit">Max allowed: 15</div>
+      <div class="fault-bar-bg"><div class="fault-bar" id="minor-bar"></div></div>
+      <div class="fault-buttons">
+        <button class="fault-btn-add" onclick="addFault('minor')">+ Add minor fault</button>
+        <button class="fault-btn-remove" onclick="removeFault('minor')">Undo</button>
+      </div>
+    </div>
+    <div class="fault-counter-card serious">
+      <div class="fault-title">Serious / dangerous faults</div>
+      <div class="fault-number" id="serious-count">0</div>
+      <div class="fault-limit">Any = instant fail</div>
+      <div class="fault-buttons">
+        <button class="fault-btn-add serious" onclick="addFault('serious')">+ Add serious fault</button>
+        <button class="fault-btn-remove" onclick="removeFault('serious')">Undo</button>
+      </div>
+    </div>
+    <div class="result-card" id="result-card" style="display:none">
+      <div class="result-icon" id="result-icon"></div>
+      <div class="result-text" id="result-text"></div>
+      <div class="result-sub" id="result-sub"></div>
+    </div>
+    <button class="reset-btn" onclick="resetFaults()">Reset session</button>
+    <div class="checklist-section">
+      <div class="checklist-title">Pre-drive checklist</div>
+      <div class="checklist-items" id="checklist"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TIPS SCREEN -->
+<div class="screen" id="screen-tips">
+  <div class="top-bar">
+    <div class="top-bar-title"><div class="logo-dot"></div>Slough Test Tips</div>
+  </div>
+  <div class="tips-content" id="tips-content"></div>
+</div>
+
+<!-- Navigation overlay -->
+<div class="nav-overlay" id="nav-overlay" style="display:none">
+  <div class="nav-header">
+    <button class="stop-nav-btn" onclick="stopNavigation()">✕ Stop</button>
+    <div class="nav-speed" id="nav-speed">0 <span>mph</span></div>
+  </div>
+  <div class="nav-instruction" id="nav-instruction">Follow the blue route</div>
+  <div class="nav-distance" id="nav-distance"></div>
+  <div class="nav-map-container"><div id="nav-map"></div></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/app.js"></script>
+<script>
+// PWA install prompt handling
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('install-banner').style.display = 'flex';
+});
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('install-banner').style.display = 'none';
+  deferredPrompt = null;
+});
+
+function installApp() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(choice => {
+      deferredPrompt = null;
+      if (choice.outcome === 'accepted') {
+        document.getElementById('install-banner').style.display = 'none';
+      }
+    });
+  } else {
+    // Fallback instructions if prompt already dismissed or on iOS
+    alert('To install:\n\nAndroid Chrome: tap the ⋮ menu (top right) → "Add to Home screen"\n\niOS Safari: tap Share → "Add to Home Screen"');
+  }
+}
+</script>
+</body>
+</html>

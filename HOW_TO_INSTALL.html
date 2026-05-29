@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How to Install – Slough Drive Practice App</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:620px;margin:0 auto;padding:20px;line-height:1.6;color:#111}
+h1{color:#1a56db;font-size:22px;margin-bottom:4px}
+.subtitle{color:#6b7280;font-size:14px;margin-bottom:24px}
+h2{font-size:17px;margin-top:28px;margin-bottom:10px;border-bottom:1px solid #e5e7eb;padding-bottom:6px}
+.step{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #f3f4f6}
+.step:last-child{border-bottom:none}
+.step-num{width:26px;height:26px;border-radius:50%;background:#1a56db;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step-text{font-size:14px;padding-top:3px}
+.warn{background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:14px}
+.good{background:#def7ec;border-left:4px solid #059669;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:14px}
+code{background:#f3f4f6;padding:2px 7px;border-radius:4px;font-size:13px;font-family:monospace}
+.section{background:#f9fafb;border-radius:10px;padding:16px;margin:14px 0}
+.fix-title{font-weight:700;font-size:15px;margin-bottom:10px;color:#111}
+</style></head><body>
+
+<h1>Installing the Slough Drive Practice App</h1>
+<p class="subtitle">A PWA that installs from Chrome and works like a native app</p>
+
+<h2>Step-by-step: GitHub Pages (free)</h2>
+
+<div class="section">
+  <div class="fix-title">1. Upload files to GitHub</div>
+  <div class="step"><span class="step-num">1</span><span class="step-text">Go to <strong>github.com</strong> and sign in (create free account if needed)</span></div>
+  <div class="step"><span class="step-num">2</span><span class="step-text">Click the <strong>+</strong> icon (top right) → <strong>New repository</strong></span></div>
+  <div class="step"><span class="step-num">3</span><span class="step-text">Name it <code>slough-drive</code> — leave everything else as default — click <strong>Create repository</strong></span></div>
+  <div class="step"><span class="step-num">4</span><span class="step-text">Click <strong>uploading an existing file</strong> (the link in the middle of the empty repo page)</span></div>
+  <div class="step"><span class="step-num">5</span><span class="step-text">Unzip <code>SloughDrivePractice_v3.zip</code> first, then drag <strong>ALL</strong> the files in (including <code>.nojekyll</code>) into the GitHub upload box</span></div>
+  <div class="step"><span class="step-num">6</span><span class="step-text">Scroll down, click <strong>Commit changes</strong></span></div>
+</div>
+
+<div class="section">
+  <div class="fix-title">2. Enable GitHub Pages</div>
+  <div class="step"><span class="step-num">7</span><span class="step-text">In your repo, click <strong>Settings</strong> (top tab bar)</span></div>
+  <div class="step"><span class="step-num">8</span><span class="step-text">In the left sidebar click <strong>Pages</strong></span></div>
+  <div class="step"><span class="step-num">9</span><span class="step-text">Under <em>Source</em>, select <strong>Deploy from a branch</strong></span></div>
+  <div class="step"><span class="step-num">10</span><span class="step-text">Set Branch to <strong>main</strong>, folder to <strong>/ (root)</strong> → click <strong>Save</strong></span></div>
+  <div class="step"><span class="step-num">11</span><span class="step-text">Wait ~2 minutes. Refresh the Pages settings page until you see a green banner with your URL:<br><code>https://YOUR-USERNAME.github.io/slough-drive/</code></span></div>
+</div>
+
+<div class="section">
+  <div class="fix-title">3. Install on your Android phone</div>
+  <div class="step"><span class="step-num">12</span><span class="step-text">On your Android, open <strong>Chrome</strong> (must be Chrome, not Samsung browser or Firefox)</span></div>
+  <div class="step"><span class="step-num">13</span><span class="step-text">Type the full URL: <code>https://YOUR-USERNAME.github.io/slough-drive/</code></span></div>
+  <div class="step"><span class="step-num">14</span><span class="step-text">Wait for the page to fully load. A blue <strong>"Install app"</strong> banner will appear at the top — tap <strong>Install</strong></span></div>
+  <div class="step"><span class="step-num">15</span><span class="step-text">If no banner appears: tap the <strong>⋮ menu</strong> (three dots, top right of Chrome) → tap <strong>"Add to Home screen"</strong> → tap <strong>Add</strong></span></div>
+</div>
+
+<div class="good"><strong>✓ Done!</strong> The app icon now appears on your home screen. Tap it — it opens full screen with no browser bar, uses your GPS live, and caches maps offline.</div>
+
+<h2>Why the banner wasn't showing before (fixed in v3)</h2>
+<div class="warn">
+  <strong>3 fixes applied in this version:</strong><br><br>
+  <strong>1. manifest.json start_url</strong> — changed from <code>./index.html</code> to <code>/</code> so Chrome recognises it as installable<br><br>
+  <strong>2. Icon entries split</strong> — <code>"any"</code> and <code>"maskable"</code> must be separate icon entries, not combined in one<br><br>
+  <strong>3. .nojekyll file added</strong> — without this, GitHub Pages' Jekyll processor can corrupt <code>sw.js</code> and <code>manifest.json</code>, making the service worker fail silently and preventing the install prompt
+</div>
+
+<h2>Troubleshooting</h2>
+<p style="font-size:14px"><strong>Still no banner after loading the page?</strong> Try: Chrome ⋮ menu → Add to Home screen. This always works even when the automatic banner is suppressed.</p>
+<p style="font-size:14px"><strong>Page not loading?</strong> Make sure you included the trailing slash in the URL: <code>.../slough-drive/</code></p>
+<p style="font-size:14px"><strong>GPS not working?</strong> The app needs HTTPS — GitHub Pages provides this automatically. If self-hosting, make sure you're on https://</p>
+<p style="font-size:14px"><strong>Old version still showing?</strong> In Chrome, long-press the app icon → App info → Clear cache, then reopen.</p>
+
+</body></html>

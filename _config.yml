@@ -1,0 +1,2 @@
+# Disable Jekyll so GitHub Pages serves files as-is
+# This is critical for sw.js and manifest.json to work correctly
