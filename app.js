@@ -723,106 +723,71 @@ function stopGPS() {
 let navRoutePoly = null;
 
 function startNavigation() {
-  // Tear down any previous nav map
-  if (navMap) {
-    navMap.remove();
-    navMap = null;
-    navGpsMarker = null;
-    navRoutePoly = null;
-  }
-  if (navWatchId) {
-    navigator.geolocation.clearWatch(navWatchId);
-    navWatchId = null;
-  }
+  if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
+  if (navMap) { navMap.remove(); navMap = null; navGpsMarker = null; }
 
   const overlay = document.getElementById('nav-overlay');
   overlay.style.display = 'flex';
 
-  // Set first instruction immediately (visible while map loads)
   document.getElementById('nav-instruction').textContent =
     activeRoute.instructions[0]?.text || 'Follow the blue route';
   document.getElementById('nav-distance').textContent =
     activeRoute.distance + ' · ' + activeRoute.duration;
 
-  // Use requestAnimationFrame chain to ensure the overlay is fully painted
-  // before we ask Leaflet to measure the container
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
+  // Build the map div with an explicit px height — avoids ALL flex/percent issues
+  const mapDiv = document.getElementById('nav-map');
+  const totalH = window.screen.height;
+  mapDiv.style.cssText = 'width:100%;height:' + totalH + 'px;display:block;';
 
-      // Calculate exact pixel height for the map container
-      const screenH = window.innerHeight;
-      const headerH = document.querySelector('.nav-header').offsetHeight;
-      const instrH  = document.getElementById('nav-instruction').offsetHeight;
-      const distH   = document.getElementById('nav-distance').offsetHeight;
-      const mapH    = Math.max(screenH - headerH - instrH - distH, 200);
-
-      const container = document.getElementById('nav-map');
-      container.style.width  = '100%';
-      container.style.height = mapH + 'px';
-      container.style.display = 'block';
-
-      navMap = L.map('nav-map', {
-        center: activeRoute.waypoints[0],
-        zoom: 15,
-        zoomControl: false,
-        attributionControl: false
-      });
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
-      }).addTo(navMap);
-
-      // Route line
-      navRoutePoly = L.polyline(activeRoute.waypoints, {
-        color: '#3b82f6', weight: 7, opacity: 0.9
-      }).addTo(navMap);
-
-      // Start / end markers
-      L.marker(activeRoute.waypoints[0], {
-        icon: makeCircleIcon('S', '#16a34a', 26)
-      }).addTo(navMap);
-      L.marker(activeRoute.waypoints[activeRoute.waypoints.length - 1], {
-        icon: makeCircleIcon('E', '#dc2626', 26)
-      }).addTo(navMap);
-
-      // Fit to show whole route to start
-      navMap.fitBounds(navRoutePoly.getBounds(), { padding: [40, 40] });
-
-      // Force Leaflet to re-measure after tiles start loading
-      setTimeout(() => { if (navMap) navMap.invalidateSize(); }, 300);
-
-      // GPS dot icon
-      const posIcon = L.divIcon({
-        html: '<div style="width:22px;height:22px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,0.25)"></div>',
-        className: '', iconAnchor: [11, 11]
-      });
-
-      if (navigator.geolocation) {
-        navWatchId = navigator.geolocation.watchPosition(pos => {
-          const ll = [pos.coords.latitude, pos.coords.longitude];
-          currentSpeed = pos.coords.speed ? Math.round(pos.coords.speed * 2.237) : 0;
-          document.getElementById('nav-speed').innerHTML = currentSpeed + ' <span>mph</span>';
-
-          if (!navGpsMarker) {
-            navGpsMarker = L.marker(ll, { icon: posIcon }).addTo(navMap);
-          } else {
-            navGpsMarker.setLatLng(ll);
-          }
-          navMap.setView(ll, 17, { animate: true });
-          updateNavInstruction(ll);
-
-        }, err => {
-          console.warn('GPS error:', err.message);
-          document.getElementById('nav-distance').textContent =
-            'No GPS signal – showing full route';
-        }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
-
-      } else {
-        document.getElementById('nav-distance').textContent =
-          'GPS not available on this device';
-      }
+  // Wait two frames so the overlay is fully painted before Leaflet touches the DOM
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    navMap = L.map('nav-map', {
+      center: activeRoute.waypoints[0],
+      zoom: 15,
+      zoomControl: false,
+      attributionControl: false,
+      preferCanvas: true
     });
-  });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      keepBuffer: 4
+    }).addTo(navMap);
+
+    // Route polyline
+    navRoutePoly = L.polyline(activeRoute.waypoints, {
+      color: '#3b82f6', weight: 8, opacity: 0.95
+    }).addTo(navMap);
+
+    L.marker(activeRoute.waypoints[0], { icon: makeCircleIcon('S','#16a34a',28) }).addTo(navMap);
+    L.marker(activeRoute.waypoints[activeRoute.waypoints.length-1], { icon: makeCircleIcon('E','#dc2626',28) }).addTo(navMap);
+
+    navMap.fitBounds(navRoutePoly.getBounds(), { padding: [50,50] });
+
+    // invalidateSize after tiles have had a chance to load
+    setTimeout(() => { if (navMap) navMap.invalidateSize(true); }, 500);
+    setTimeout(() => { if (navMap) navMap.invalidateSize(true); }, 1200);
+
+    const posIcon = L.divIcon({
+      html: '<div style="width:24px;height:24px;border-radius:50%;background:#2563eb;border:4px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,0.3)"></div>',
+      className: '', iconAnchor: [12,12]
+    });
+
+    if (navigator.geolocation) {
+      navWatchId = navigator.geolocation.watchPosition(pos => {
+        const ll = [pos.coords.latitude, pos.coords.longitude];
+        currentSpeed = pos.coords.speed ? Math.round(pos.coords.speed * 2.237) : 0;
+        document.getElementById('nav-speed').innerHTML = currentSpeed + ' <span>mph</span>';
+        if (!navGpsMarker) { navGpsMarker = L.marker(ll, { icon: posIcon }).addTo(navMap); }
+        else { navGpsMarker.setLatLng(ll); }
+        navMap.setView(ll, 17, { animate: true, duration: 0.5 });
+        updateNavInstruction(ll);
+      }, err => {
+        console.warn('GPS:', err.code, err.message);
+        document.getElementById('nav-distance').textContent = 'No GPS – showing full route · ' + activeRoute.distance;
+      }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+    }
+  }));
 }
 
 function updateNavInstruction(userLL) {
@@ -838,23 +803,15 @@ function updateNavInstruction(userLL) {
     if (wp) {
       const m = Math.round(Math.hypot(userLL[0]-wp[0], userLL[1]-wp[1]) * 111320);
       document.getElementById('nav-distance').textContent =
-        'In ' + (m < 100 ? m + 'm' : (Math.round(m / 100) / 10).toFixed(1) + 'km');
+        'In ' + (m < 100 ? m + 'm' : (Math.round(m/100)/10).toFixed(1) + 'km');
     }
   }
 }
 
 function stopNavigation() {
   document.getElementById('nav-overlay').style.display = 'none';
-  if (navWatchId) {
-    navigator.geolocation.clearWatch(navWatchId);
-    navWatchId = null;
-  }
-  if (navMap) {
-    navMap.remove();
-    navMap = null;
-    navGpsMarker = null;
-    navRoutePoly = null;
-  }
+  if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
+  if (navMap) { navMap.remove(); navMap = null; navGpsMarker = null; navRoutePoly = null; }
 }
 
 // ─── SCREENS ──────────────────────────────────────────────────────────────────
