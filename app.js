@@ -720,32 +720,95 @@ function stopGPS() {
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
-function startNavigation() {
-  document.getElementById('nav-overlay').style.display = 'flex';
-  if (!navMap) {
-    navMap = L.map('nav-map', { center: TC, zoom: 15, zoomControl: false, attributionControl: false });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(navMap);
-  }
-  L.polyline(activeRoute.waypoints, { color: '#60a5fa', weight: 6, opacity: 0.9 }).addTo(navMap);
-  navMap.fitBounds(L.polyline(activeRoute.waypoints).getBounds(), { padding: [30,30] });
-  document.getElementById('nav-instruction').textContent = activeRoute.instructions[0]?.text || 'Follow the blue route';
-  document.getElementById('nav-distance').textContent = activeRoute.distance + ' total · ' + activeRoute.duration;
+let navRoutePoly = null;
 
-  const icon = L.divIcon({
-    html: '<div style="width:18px;height:18px;border-radius:50%;background:#60a5fa;border:3px solid #fff"></div>',
-    className: '', iconAnchor: [9,9]
-  });
-  if (navigator.geolocation) {
-    navWatchId = navigator.geolocation.watchPosition(pos => {
-      const ll = [pos.coords.latitude, pos.coords.longitude];
-      currentSpeed = pos.coords.speed ? Math.round(pos.coords.speed * 2.237) : 0;
-      document.getElementById('nav-speed').innerHTML = currentSpeed + ' <span>mph</span>';
-      if (!navGpsMarker) { navGpsMarker = L.marker(ll, { icon }).addTo(navMap); }
-      else navGpsMarker.setLatLng(ll);
-      navMap.setView(ll, 16);
-      updateNavInstruction(ll);
-    }, () => {}, { enableHighAccuracy: true, maximumAge: 1000 });
+function startNavigation() {
+  const overlay = document.getElementById('nav-overlay');
+  overlay.style.display = 'flex';
+
+  // CRITICAL: Leaflet needs the container to be visible before init
+  // Destroy and recreate the map every time to avoid black screen
+  if (navMap) {
+    navMap.remove();
+    navMap = null;
+    navGpsMarker = null;
+    navRoutePoly = null;
   }
+
+  // Small delay so the overlay is painted before Leaflet measures the container
+  setTimeout(() => {
+    const container = document.getElementById('nav-map');
+    container.style.height = '100%';
+
+    navMap = L.map('nav-map', {
+      center: activeRoute.waypoints[0],
+      zoom: 16,
+      zoomControl: true,
+      attributionControl: false
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(navMap);
+
+    // Draw the full route in blue
+    navRoutePoly = L.polyline(activeRoute.waypoints, {
+      color: '#3b82f6',
+      weight: 7,
+      opacity: 0.9
+    }).addTo(navMap);
+
+    // Start marker (S) and end marker (E)
+    L.marker(activeRoute.waypoints[0], {
+      icon: makeCircleIcon('S', '#16a34a', 26)
+    }).addTo(navMap);
+    L.marker(activeRoute.waypoints[activeRoute.waypoints.length - 1], {
+      icon: makeCircleIcon('E', '#dc2626', 26)
+    }).addTo(navMap);
+
+    // Show full route first
+    navMap.fitBounds(navRoutePoly.getBounds(), { padding: [40, 40] });
+
+    // First instruction
+    document.getElementById('nav-instruction').textContent =
+      activeRoute.instructions[0]?.text || 'Follow the blue route';
+    document.getElementById('nav-distance').textContent =
+      activeRoute.distance + ' · ' + activeRoute.duration;
+
+    // GPS position dot (blue pulsing circle)
+    const posIcon = L.divIcon({
+      html: '<div style="width:22px;height:22px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 5px rgba(37,99,235,0.3)"></div>',
+      className: '',
+      iconAnchor: [11, 11]
+    });
+
+    if (navigator.geolocation) {
+      navWatchId = navigator.geolocation.watchPosition(pos => {
+        const ll = [pos.coords.latitude, pos.coords.longitude];
+        currentSpeed = pos.coords.speed ? Math.round(pos.coords.speed * 2.237) : 0;
+        document.getElementById('nav-speed').innerHTML = currentSpeed + ' <span>mph</span>';
+
+        if (!navGpsMarker) {
+          navGpsMarker = L.marker(ll, { icon: posIcon }).addTo(navMap);
+        } else {
+          navGpsMarker.setLatLng(ll);
+        }
+
+        // Keep position centred on screen, zoomed in like sat nav
+        navMap.setView(ll, 17, { animate: true });
+        updateNavInstruction(ll);
+
+      }, err => {
+        // GPS denied or unavailable – just show the full route
+        console.warn('GPS:', err.message);
+        document.getElementById('nav-distance').textContent =
+          'GPS unavailable – showing full route · ' + activeRoute.distance;
+      }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
+    } else {
+      document.getElementById('nav-distance').textContent =
+        'GPS not supported on this device';
+    }
+  }, 150);
 }
 
 function updateNavInstruction(userLL) {
@@ -760,14 +823,24 @@ function updateNavInstruction(userLL) {
     const wp = activeRoute.waypoints[next.point];
     if (wp) {
       const m = Math.round(Math.hypot(userLL[0]-wp[0], userLL[1]-wp[1]) * 111320);
-      document.getElementById('nav-distance').textContent = 'In ' + (m < 100 ? m + 'm' : (Math.round(m/100)/10).toFixed(1) + 'km');
+      document.getElementById('nav-distance').textContent =
+        'In ' + (m < 100 ? m + 'm' : (Math.round(m / 100) / 10).toFixed(1) + 'km');
     }
   }
 }
 
 function stopNavigation() {
   document.getElementById('nav-overlay').style.display = 'none';
-  if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
+  if (navWatchId) {
+    navigator.geolocation.clearWatch(navWatchId);
+    navWatchId = null;
+  }
+  if (navMap) {
+    navMap.remove();
+    navMap = null;
+    navGpsMarker = null;
+    navRoutePoly = null;
+  }
 }
 
 // ─── SCREENS ──────────────────────────────────────────────────────────────────
