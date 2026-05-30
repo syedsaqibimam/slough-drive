@@ -734,83 +734,155 @@ function stopGPS() {
   if (gpsMarker) { map.removeLayer(gpsMarker); gpsMarker = null; }
 }
 
-// ─── NAVIGATION ───────────────────────────────────────────────────────────────
-let navWatchActive = false;
+// ─── NAVIGATION with VOICE + GPS PROXIMITY ALERTS ────────────────────────────
+let navWatchId2 = null;
+let spokenSteps = new Set();      // which steps have been announced
+let preAnnounced = new Set();     // which steps got the "in X metres" pre-alert
+let voiceEnabled = true;
+
+// Haversine distance in METRES between two [lat,lng] points
+function metresBetween(a, b) {
+  const R = 6371000;
+  const dLat = (b[0]-a[0]) * Math.PI/180;
+  const dLng = (b[1]-a[1]) * Math.PI/180;
+  const lat1 = a[0]*Math.PI/180, lat2 = b[0]*Math.PI/180;
+  const x = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+
+function speak(text) {
+  if (!voiceEnabled || !('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-GB';
+    u.rate = 1.0;
+    u.volume = 1.0;
+    window.speechSynthesis.speak(u);
+    log('SPEAK: ' + text);
+  } catch(e) { log('speak error: ' + e); }
+}
+
+function toggleVoice() {
+  voiceEnabled = !voiceEnabled;
+  const btn = document.getElementById('voice-btn');
+  if (btn) btn.textContent = voiceEnabled ? '🔊 Voice ON' : '🔇 Voice OFF';
+  if (voiceEnabled) speak('Voice guidance on');
+  else window.speechSynthesis.cancel();
+}
 
 function startNavigation() {
-  log('startNavigation called, route=' + (activeRoute ? activeRoute.name : 'NONE'));
+  log('startNavigation: ' + (activeRoute ? activeRoute.name : 'NONE'));
   if (!activeRoute) return;
+
+  spokenSteps = new Set();
+  preAnnounced = new Set();
 
   const overlay = document.getElementById('nav-overlay');
   overlay.style.display = 'flex';
-  log('overlay displayed, iframe=' + (document.getElementById('nav-iframe') ? 'found' : 'MISSING'));
 
-  // Show first instruction immediately
+  // First instruction
   document.getElementById('nav-instruction').textContent =
     activeRoute.instructions[0]?.text || 'Follow the route';
-  document.getElementById('nav-distance').textContent =
-    activeRoute.distance + ' · ' + activeRoute.duration + ' · Tap a step below';
+  document.getElementById('nav-distance').textContent = 'Waiting for GPS signal…';
 
-  // Build OpenStreetMap embed (Google Maps blocks iframes)
+  // OpenStreetMap embed showing the route area
   const wps = activeRoute.waypoints;
-  const allLats = wps.map(w => w[0]);
-  const allLngs = wps.map(w => w[1]);
-  const minLat = Math.min(...allLats) - 0.008;
-  const maxLat = Math.max(...allLats) + 0.008;
-  const minLng = Math.min(...allLngs) - 0.008;
-  const maxLng = Math.max(...allLngs) + 0.008;
-
+  const lats = wps.map(w => w[0]), lngs = wps.map(w => w[1]);
   const osmUrl = 'https://www.openstreetmap.org/export/embed.html?bbox=' +
-    minLng + '%2C' + minLat + '%2C' + maxLng + '%2C' + maxLat + '&layer=mapnik';
-
-  log('setting OSM iframe src');
+    (Math.min(...lngs)-0.006) + '%2C' + (Math.min(...lats)-0.006) + '%2C' +
+    (Math.max(...lngs)+0.006) + '%2C' + (Math.max(...lats)+0.006) + '&layer=mapnik';
   document.getElementById('nav-iframe').src = osmUrl;
-  log('OSM iframe set');
 
-  // Google Maps deep link (opens in Google Maps app or browser tab)
+  // Google Maps deep link
   const origin = wps[0][0] + ',' + wps[0][1];
-  const dest   = wps[wps.length-1][0] + ',' + wps[wps.length-1][1];
+  const dest = wps[wps.length-1][0] + ',' + wps[wps.length-1][1];
   const mid = [];
   const step = Math.floor(wps.length / 5);
   for (let i = step; i < wps.length - step; i += step) mid.push(wps[i][0] + ',' + wps[i][1]);
   const googleUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin +
-    '&destination=' + dest + (mid.length ? '&waypoints=' + mid.join('%7C') : '') +
-    '&travelmode=driving';
+    '&destination=' + dest + (mid.length ? '&waypoints=' + mid.join('%7C') : '') + '&travelmode=driving';
 
-  document.getElementById('nav-distance').innerHTML =
-    '<span style="color:#94a3b8">' + activeRoute.distance + ' · ' + activeRoute.duration + '</span>' +
-    '&nbsp;&nbsp;<a href="' + googleUrl + '" target="_blank" ' +
-    'style="background:#1d4ed8;color:#fff;padding:5px 12px;border-radius:6px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;">' +
-    '↗ Google Maps</a>';
-
-  // Render step-by-step instruction list
+  // Steps list with voice toggle + Google Maps button at top
   const stepsDiv = document.getElementById('nav-steps');
-  stepsDiv.innerHTML = activeRoute.instructions.map((inst, i) => {
-    const wp = activeRoute.waypoints[inst.point] || activeRoute.waypoints[0];
-    const gmUrl = 'https://maps.google.com/?q=' + wp[0] + ',' + wp[1];
-    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);">' +
-      '<div style="width:24px;height:24px;border-radius:50%;background:#1d4ed8;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (i+1) + '</div>' +
-      '<div style="flex:1;">' +
+  stepsDiv.innerHTML =
+    '<div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.1);">' +
+      '<button id="voice-btn" onclick="toggleVoice()" style="flex:1;background:#1d4ed8;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;">🔊 Voice ON</button>' +
+      '<a href="' + googleUrl + '" target="_blank" style="background:#334155;color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;display:flex;align-items:center;">↗ Maps</a>' +
+    '</div>' +
+    activeRoute.instructions.map((inst, i) =>
+      '<div id="step-' + i + '" style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);">' +
+        '<div id="step-num-' + i + '" style="width:24px;height:24px;border-radius:50%;background:#475569;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (i+1) + '</div>' +
         '<div style="color:#f1f5f9;font-size:14px;font-weight:600;line-height:1.4;">' + inst.text + '</div>' +
-      '</div>' +
-      '</div>';
-  }).join('');
+      '</div>'
+    ).join('');
 
-  // Live GPS speed display
-  if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
+  // Announce we are starting
+  speak('Starting ' + activeRoute.name + '. ' + (activeRoute.instructions[0]?.text || ''));
+
+  // GPS watch — the core of voice navigation
+  if (navWatchId2) { navigator.geolocation.clearWatch(navWatchId2); navWatchId2 = null; }
   if (navigator.geolocation) {
-    navWatchId = navigator.geolocation.watchPosition(pos => {
+    navWatchId2 = navigator.geolocation.watchPosition(pos => {
+      const here = [pos.coords.latitude, pos.coords.longitude];
       const spd = pos.coords.speed ? Math.round(pos.coords.speed * 2.237) : 0;
       document.getElementById('nav-speed').innerHTML = spd + ' <span style="font-size:14px;font-weight:400;">mph</span>';
-    }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 });
+
+      // Find the nearest UN-spoken instruction ahead
+      let nearest = null, nearestDist = Infinity, nearestIdx = -1;
+      activeRoute.instructions.forEach((inst, i) => {
+        if (spokenSteps.has(i)) return;
+        const wp = activeRoute.waypoints[inst.point];
+        if (!wp) return;
+        const d = metresBetween(here, wp);
+        if (d < nearestDist) { nearestDist = d; nearest = inst; nearestIdx = i; }
+      });
+
+      if (nearest) {
+        // Update on-screen instruction + distance
+        const dShow = nearestDist >= 1000
+          ? (nearestDist/1000).toFixed(1) + ' km'
+          : Math.round(nearestDist) + ' m';
+        document.getElementById('nav-instruction').textContent = nearest.text;
+        document.getElementById('nav-distance').textContent = 'In ' + dShow;
+
+        // Highlight current step in the list
+        document.querySelectorAll('[id^="step-num-"]').forEach(el => el.style.background = '#475569');
+        const numEl = document.getElementById('step-num-' + nearestIdx);
+        if (numEl) numEl.style.background = '#1d4ed8';
+
+        // PRE-ALERT at ~150m: "In 150 metres, turn left..."
+        if (nearestDist <= 160 && nearestDist > 60 && !preAnnounced.has(nearestIdx)) {
+          preAnnounced.add(nearestIdx);
+          speak('In ' + Math.round(nearestDist/10)*10 + ' metres, ' + nearest.text);
+        }
+
+        // FINAL ALERT at ~50m: just the instruction
+        if (nearestDist <= 55 && !spokenSteps.has(nearestIdx)) {
+          spokenSteps.add(nearestIdx);
+          speak(nearest.text);
+          // mark step done (green)
+          if (numEl) { numEl.style.background = '#16a34a'; numEl.textContent = '✓'; }
+        }
+      } else {
+        document.getElementById('nav-instruction').textContent = 'Route complete — well done!';
+        document.getElementById('nav-distance').textContent = 'All turns covered';
+      }
+    }, err => {
+      log('GPS err: ' + err.message);
+      document.getElementById('nav-distance').textContent = 'GPS error: ' + err.message;
+    }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
+  } else {
+    document.getElementById('nav-distance').textContent = 'GPS not available on this device';
   }
 }
 
 function stopNavigation() {
-  log('stopNavigation called');
+  log('stopNavigation');
   document.getElementById('nav-overlay').style.display = 'none';
   document.getElementById('nav-iframe').src = '';
-  if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
+  if (navWatchId2) { navigator.geolocation.clearWatch(navWatchId2); navWatchId2 = null; }
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 
 

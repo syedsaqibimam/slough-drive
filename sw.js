@@ -1,5 +1,5 @@
 // sw.js - v10 - clears ALL previous caches on install
-const CACHE = 'slough-v10';
+const CACHE = 'slough-v12';
 const LOCAL = ['index.html','style.css','app.js','manifest.json','icon-192.png','icon-512.png'];
 
 self.addEventListener('install', e => {
