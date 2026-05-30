@@ -6,23 +6,46 @@
 <meta name="theme-color" content="#1a56db">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Slough Drive">
 <title>Slough Driving Test Practice</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+
+<!-- KILL OLD SERVICE WORKERS FIRST, then load everything -->
+<script>
+(function() {
+  // Unregister ALL old service workers so stale caches can't block us
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => {
+        console.log('Unregistering old SW:', r.scope);
+        r.unregister();
+      });
+    });
+    // Clear ALL caches
+    if (window.caches) {
+      caches.keys().then(keys => keys.forEach(k => {
+        console.log('Clearing cache:', k);
+        caches.delete(k);
+      }));
+    }
+  }
+})();
+</script>
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<!-- Install banner -->
 <div class="install-banner" id="install-banner" style="display:none">
   <div class="install-banner-text"><strong>Install app</strong> – add to your home screen</div>
   <button class="install-banner-btn" onclick="installApp()">Install</button>
   <button class="install-banner-close" onclick="document.getElementById('install-banner').style.display='none'">✕</button>
 </div>
 
+<!-- Bottom nav -->
 <nav class="bottom-nav">
   <button class="nav-btn active" onclick="showScreen('map')" id="nav-map">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
@@ -37,7 +60,7 @@
     <span>Tips</span>
   </button>
   <button class="nav-btn" onclick="showScreen('debug')" id="nav-debug">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
     <span>Debug</span>
   </button>
 </nav>
@@ -46,7 +69,7 @@
 <div class="screen active" id="screen-map">
   <div class="top-bar">
     <div class="top-bar-title"><div class="logo-dot"></div>Slough Test Routes</div>
-    <button class="gps-btn" id="gps-btn" onclick="toggleGPS()" title="Toggle GPS">
+    <button class="gps-btn" id="gps-btn" onclick="toggleGPS()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
     </button>
   </div>
@@ -106,44 +129,31 @@
   <div class="tips-content" id="tips-content"></div>
 </div>
 
-<!-- NAVIGATION OVERLAY — pure HTML, no Leaflet dependency -->
-<div id="nav-overlay" style="display:none; position:fixed; inset:0; z-index:999; flex-direction:column; background:#0f172a;">
-
-  <!-- Top bar -->
-  <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:#1e293b; flex-shrink:0;">
-    <button onclick="stopNavigation()" style="background:rgba(255,255,255,0.15);border:none;border-radius:8px;color:#fff;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer;">✕ Stop</button>
-    <div id="nav-speed" style="font-size:30px;font-weight:700;color:#fff;">0 <span style="font-size:14px;font-weight:400;">mph</span></div>
-  </div>
-
-  <!-- Current instruction -->
-  <div id="nav-instruction" style="background:#1d4ed8;color:#fff;padding:16px;font-size:18px;font-weight:700;line-height:1.3;flex-shrink:0;">
-    Follow the blue route
-  </div>
-
-  <!-- Distance to next -->
-  <div id="nav-distance" style="background:#1e293b;color:#94a3b8;padding:8px 16px;font-size:14px;flex-shrink:0;"></div>
-
-  <!-- THE MAP — just an iframe to Google Maps, zero Leaflet issues -->
-  <iframe id="nav-iframe" src="" style="flex:1;border:none;width:100%;background:#1e293b;" allow="geolocation"></iframe>
-
-  <!-- Instructions list scrollable below map -->
-  <div id="nav-steps" style="background:#0f172a;overflow-y:auto;max-height:220px;flex-shrink:0;padding:8px 0;"></div>
-
-</div>
-
 <!-- DEBUG SCREEN -->
 <div class="screen" id="screen-debug">
-  <div style="background:#1a56db;height:56px;display:flex;align-items:center;padding:0 16px;flex-shrink:0;">
-    <span style="color:#fff;font-size:17px;font-weight:600;">Debug Log</span>
-    <button onclick="DBG.length=0;document.getElementById('debug-log').textContent=''" style="margin-left:auto;background:rgba(255,255,255,0.2);border:none;color:#fff;padding:6px 12px;border-radius:6px;font-size:13px;">Clear</button>
-    <button onclick="copyDebug()" style="margin-left:8px;background:#fff;border:none;color:#1a56db;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;">Copy</button>
+  <div class="top-bar">
+    <div class="top-bar-title"><div class="logo-dot"></div>Debug Log</div>
+    <button onclick="copyDebug()" style="background:#fff;border:none;color:#1a56db;padding:6px 14px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Copy all</button>
   </div>
-  <pre id="debug-log" style="flex:1;overflow-y:auto;padding:12px 16px;margin:0;font-size:12px;font-family:monospace;background:#111;color:#4ade80;white-space:pre-wrap;word-break:break-all;padding-bottom:80px;"></pre>
+  <pre id="debug-log" style="flex:1;overflow-y:auto;padding:12px 16px;margin:0;font-size:11px;font-family:monospace;background:#0a0a0a;color:#4ade80;white-space:pre-wrap;word-break:break-all;padding-bottom:80px;"></pre>
+</div>
+
+<!-- NAV OVERLAY -->
+<div id="nav-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:999;flex-direction:column;background:#0f172a;">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#1e293b;flex-shrink:0;">
+    <button onclick="stopNavigation()" style="background:rgba(255,255,255,0.15);border:none;border-radius:8px;color:#fff;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer;">✕ Stop</button>
+    <div id="nav-speed" style="font-size:28px;font-weight:700;color:#fff;">0 <span style="font-size:13px;font-weight:400;">mph</span></div>
+  </div>
+  <div id="nav-instruction" style="background:#1d4ed8;color:#fff;padding:16px;font-size:17px;font-weight:700;line-height:1.35;flex-shrink:0;"></div>
+  <div id="nav-distance" style="background:#1e293b;color:#94a3b8;padding:8px 16px;font-size:14px;flex-shrink:0;"></div>
+  <iframe id="nav-iframe" src="" style="flex:1;border:none;width:100%;min-height:200px;" allow="geolocation *"></iframe>
+  <div id="nav-steps" style="background:#0f172a;overflow-y:auto;max-height:200px;flex-shrink:0;"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="app.js"></script>
 <script>
+// PWA install
 let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault(); deferredPrompt = e;
@@ -152,20 +162,27 @@ window.addEventListener('beforeinstallprompt', e => {
 window.addEventListener('appinstalled', () => {
   document.getElementById('install-banner').style.display = 'none';
 });
+function installApp() {
+  if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt.userChoice.then(() => deferredPrompt = null); }
+  else alert('Tap Chrome ⋮ menu → "Add to Home screen"');
+}
 function copyDebug() {
   const txt = document.getElementById('debug-log').textContent;
-  navigator.clipboard.writeText(txt).then(() => alert('Log copied! Paste it to Claude.')).catch(() => {
-    prompt('Copy this log:', txt);
-  });
+  if (!txt) { alert('No log yet – use the app first then come back here'); return; }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(txt).then(() => alert('Copied! Paste to Claude.')).catch(() => prompt('Copy this:', txt));
+  } else { prompt('Copy this:', txt); }
 }
-function installApp() {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
-  } else {
-    alert('Tap Chrome ⋮ menu → "Add to Home screen"');
+// Register new SW AFTER clearing old ones
+window.addEventListener('load', () => {
+  if ('serviceWorker' in navigator) {
+    setTimeout(() => {
+      navigator.serviceWorker.register('sw.js').then(r => {
+        log('SW registered: ' + r.scope);
+      }).catch(e => log('SW error: ' + e));
+    }, 2000); // delay so unregister runs first
   }
-}
+});
 </script>
-</body>
-</html>
+</HTMLEOF>
+echo "index.html rewritten cleanly"
