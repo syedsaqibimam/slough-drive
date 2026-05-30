@@ -602,10 +602,10 @@ const TIPS = [
 ];
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let map = null, navMap = null;
+let map = null;
 let activeRoute = ROUTES[0];
 let routeLayers = {}, markerLayers = {};
-let gpsActive = false, gpsMarker = null, navGpsMarker = null;
+let gpsActive = false, gpsMarker = null;
 let watchId = null, navWatchId = null;
 let minorFaults = 0, seriousFaults = 0;
 let checkedItems = new Set();
@@ -720,99 +720,71 @@ function stopGPS() {
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
-let navRoutePoly = null;
+let navWatchActive = false;
 
 function startNavigation() {
-  if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
-  if (navMap) { navMap.remove(); navMap = null; navGpsMarker = null; }
+  if (!activeRoute) return;
 
   const overlay = document.getElementById('nav-overlay');
   overlay.style.display = 'flex';
 
+  // Show first instruction immediately
   document.getElementById('nav-instruction').textContent =
-    activeRoute.instructions[0]?.text || 'Follow the blue route';
+    activeRoute.instructions[0]?.text || 'Follow the route';
   document.getElementById('nav-distance').textContent =
-    activeRoute.distance + ' · ' + activeRoute.duration;
+    activeRoute.distance + ' · ' + activeRoute.duration + ' · Tap a step below';
 
-  // Build the map div with an explicit px height — avoids ALL flex/percent issues
-  const mapDiv = document.getElementById('nav-map');
-  const totalH = window.screen.height;
-  mapDiv.style.cssText = 'width:100%;height:' + totalH + 'px;display:block;';
+  // Build Google Maps directions URL using waypoints
+  // Start and end are the test centre; pass key intermediate points as waypoints
+  const wps = activeRoute.waypoints;
+  const origin = wps[0][0] + ',' + wps[0][1];
+  const dest   = wps[wps.length-1][0] + ',' + wps[wps.length-1][1];
 
-  // Wait two frames so the overlay is fully painted before Leaflet touches the DOM
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    navMap = L.map('nav-map', {
-      center: activeRoute.waypoints[0],
-      zoom: 15,
-      zoomControl: false,
-      attributionControl: false,
-      preferCanvas: true
-    });
+  // Pick ~4 intermediate waypoints spread evenly through the route
+  const mid = [];
+  const step = Math.floor(wps.length / 5);
+  for (let i = step; i < wps.length - step; i += step) {
+    mid.push(wps[i][0] + ',' + wps[i][1]);
+  }
+  const waypointStr = mid.join('|');
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      keepBuffer: 4
-    }).addTo(navMap);
+  const mapsUrl = 'https://www.google.com/maps/dir/?api=1' +
+    '&origin=' + origin +
+    '&destination=' + dest +
+    (waypointStr ? '&waypoints=' + waypointStr : '') +
+    '&travelmode=driving';
 
-    // Route polyline
-    navRoutePoly = L.polyline(activeRoute.waypoints, {
-      color: '#3b82f6', weight: 8, opacity: 0.95
-    }).addTo(navMap);
+  document.getElementById('nav-iframe').src = mapsUrl;
 
-    L.marker(activeRoute.waypoints[0], { icon: makeCircleIcon('S','#16a34a',28) }).addTo(navMap);
-    L.marker(activeRoute.waypoints[activeRoute.waypoints.length-1], { icon: makeCircleIcon('E','#dc2626',28) }).addTo(navMap);
+  // Render step-by-step instruction list
+  const stepsDiv = document.getElementById('nav-steps');
+  stepsDiv.innerHTML = activeRoute.instructions.map((inst, i) => {
+    const wp = activeRoute.waypoints[inst.point] || activeRoute.waypoints[0];
+    const gmUrl = 'https://maps.google.com/?q=' + wp[0] + ',' + wp[1];
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);">' +
+      '<div style="width:24px;height:24px;border-radius:50%;background:#1d4ed8;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (i+1) + '</div>' +
+      '<div style="flex:1;">' +
+        '<div style="color:#f1f5f9;font-size:14px;font-weight:600;line-height:1.4;">' + inst.text + '</div>' +
+      '</div>' +
+      '</div>';
+  }).join('');
 
-    navMap.fitBounds(navRoutePoly.getBounds(), { padding: [50,50] });
-
-    // invalidateSize after tiles have had a chance to load
-    setTimeout(() => { if (navMap) navMap.invalidateSize(true); }, 500);
-    setTimeout(() => { if (navMap) navMap.invalidateSize(true); }, 1200);
-
-    const posIcon = L.divIcon({
-      html: '<div style="width:24px;height:24px;border-radius:50%;background:#2563eb;border:4px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,0.3)"></div>',
-      className: '', iconAnchor: [12,12]
-    });
-
-    if (navigator.geolocation) {
-      navWatchId = navigator.geolocation.watchPosition(pos => {
-        const ll = [pos.coords.latitude, pos.coords.longitude];
-        currentSpeed = pos.coords.speed ? Math.round(pos.coords.speed * 2.237) : 0;
-        document.getElementById('nav-speed').innerHTML = currentSpeed + ' <span>mph</span>';
-        if (!navGpsMarker) { navGpsMarker = L.marker(ll, { icon: posIcon }).addTo(navMap); }
-        else { navGpsMarker.setLatLng(ll); }
-        navMap.setView(ll, 17, { animate: true, duration: 0.5 });
-        updateNavInstruction(ll);
-      }, err => {
-        console.warn('GPS:', err.code, err.message);
-        document.getElementById('nav-distance').textContent = 'No GPS – showing full route · ' + activeRoute.distance;
-      }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
-    }
-  }));
-}
-
-function updateNavInstruction(userLL) {
-  let closest = { dist: Infinity, index: 0 };
-  activeRoute.waypoints.forEach((wp, i) => {
-    const d = Math.hypot(userLL[0]-wp[0], userLL[1]-wp[1]);
-    if (d < closest.dist) { closest.dist = d; closest.index = i; }
-  });
-  const next = activeRoute.instructions.find(inst => inst.point > closest.index);
-  if (next) {
-    document.getElementById('nav-instruction').textContent = next.text;
-    const wp = activeRoute.waypoints[next.point];
-    if (wp) {
-      const m = Math.round(Math.hypot(userLL[0]-wp[0], userLL[1]-wp[1]) * 111320);
-      document.getElementById('nav-distance').textContent =
-        'In ' + (m < 100 ? m + 'm' : (Math.round(m/100)/10).toFixed(1) + 'km');
-    }
+  // Live GPS speed display
+  if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
+  if (navigator.geolocation) {
+    navWatchId = navigator.geolocation.watchPosition(pos => {
+      const spd = pos.coords.speed ? Math.round(pos.coords.speed * 2.237) : 0;
+      document.getElementById('nav-speed').innerHTML = spd + ' <span style="font-size:14px;font-weight:400;">mph</span>';
+    }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 });
   }
 }
 
 function stopNavigation() {
   document.getElementById('nav-overlay').style.display = 'none';
+  document.getElementById('nav-iframe').src = '';
   if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
-  if (navMap) { navMap.remove(); navMap = null; navGpsMarker = null; navRoutePoly = null; }
 }
+
 
 // ─── SCREENS ──────────────────────────────────────────────────────────────────
 function showScreen(name) {
