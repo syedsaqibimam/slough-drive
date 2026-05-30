@@ -1,5 +1,18 @@
 'use strict';
 
+// ─── DEBUG LOGGER ─────────────────────────────────────────────────────────────
+const DBG = [];
+function log(msg) {
+  const t = new Date().toISOString().slice(11,23);
+  DBG.push(t + ' ' + msg);
+  console.log(msg);
+  const el = document.getElementById('debug-log');
+  if (el) el.textContent = DBG.slice(-30).join('\n');
+}
+window.onerror = (msg, src, line, col, err) => {
+  log('JS ERROR: ' + msg + ' (line ' + line + ')');
+};
+
 // ─── SLOUGH TEST ROUTES DATA ─────────────────────────────────────────────────
 // Based on real DVSA Slough routes. Test Centre: 12 Waterside Drive SL3 6EZ
 // Coordinates derived from actual street names used in official route directions
@@ -613,6 +626,7 @@ let currentSpeed = 0;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
+  log('APP LOAD START');
   initMap();
   initRouteTabs();
   initPractice();
@@ -623,6 +637,7 @@ window.addEventListener('load', () => {
 
 // ─── MAP ──────────────────────────────────────────────────────────────────────
 function initMap() {
+  log('initMap called');
   map = L.map('map', { center: TC, zoom: 14, zoomControl: false });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap', maxZoom: 19
@@ -723,10 +738,12 @@ function stopGPS() {
 let navWatchActive = false;
 
 function startNavigation() {
+  log('startNavigation called, route=' + (activeRoute ? activeRoute.name : 'NONE'));
   if (!activeRoute) return;
 
   const overlay = document.getElementById('nav-overlay');
   overlay.style.display = 'flex';
+  log('overlay displayed, iframe=' + (document.getElementById('nav-iframe') ? 'found' : 'MISSING'));
 
   // Show first instruction immediately
   document.getElementById('nav-instruction').textContent =
@@ -754,7 +771,9 @@ function startNavigation() {
     (waypointStr ? '&waypoints=' + waypointStr : '') +
     '&travelmode=driving';
 
+  log('setting iframe src');
   document.getElementById('nav-iframe').src = mapsUrl;
+  log('iframe src set: ' + mapsUrl.slice(0,80));
 
   // Render step-by-step instruction list
   const stepsDiv = document.getElementById('nav-steps');
@@ -780,6 +799,7 @@ function startNavigation() {
 }
 
 function stopNavigation() {
+  log('stopNavigation called');
   document.getElementById('nav-overlay').style.display = 'none';
   document.getElementById('nav-iframe').src = '';
   if (navWatchId) { navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
