@@ -382,8 +382,8 @@ html, body {
   min-height: 56px;
 }
 .nav-distance { background: #16213e; color: #aaa; padding: 8px 16px; font-size: 14px; }
-.nav-map-container { flex: 1; min-height: 0; position: relative; }
-#nav-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+.nav-map-container { flex: 1; min-height: 0; }
+#nav-map { width: 100%; display: block; background: #1a1a2e; }
 
 /* Leaflet popup tweaks */
 .leaflet-popup-content-wrapper { border-radius: 10px; font-family: inherit; }
