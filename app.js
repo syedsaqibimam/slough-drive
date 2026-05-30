@@ -751,29 +751,37 @@ function startNavigation() {
   document.getElementById('nav-distance').textContent =
     activeRoute.distance + ' · ' + activeRoute.duration + ' · Tap a step below';
 
-  // Build Google Maps directions URL using waypoints
-  // Start and end are the test centre; pass key intermediate points as waypoints
+  // Build OpenStreetMap embed (Google Maps blocks iframes)
   const wps = activeRoute.waypoints;
+  const allLats = wps.map(w => w[0]);
+  const allLngs = wps.map(w => w[1]);
+  const minLat = Math.min(...allLats) - 0.008;
+  const maxLat = Math.max(...allLats) + 0.008;
+  const minLng = Math.min(...allLngs) - 0.008;
+  const maxLng = Math.max(...allLngs) + 0.008;
+
+  const osmUrl = 'https://www.openstreetmap.org/export/embed.html?bbox=' +
+    minLng + '%2C' + minLat + '%2C' + maxLng + '%2C' + maxLat + '&layer=mapnik';
+
+  log('setting OSM iframe src');
+  document.getElementById('nav-iframe').src = osmUrl;
+  log('OSM iframe set');
+
+  // Google Maps deep link (opens in Google Maps app or browser tab)
   const origin = wps[0][0] + ',' + wps[0][1];
   const dest   = wps[wps.length-1][0] + ',' + wps[wps.length-1][1];
-
-  // Pick ~4 intermediate waypoints spread evenly through the route
   const mid = [];
   const step = Math.floor(wps.length / 5);
-  for (let i = step; i < wps.length - step; i += step) {
-    mid.push(wps[i][0] + ',' + wps[i][1]);
-  }
-  const waypointStr = mid.join('|');
-
-  const mapsUrl = 'https://www.google.com/maps/dir/?api=1' +
-    '&origin=' + origin +
-    '&destination=' + dest +
-    (waypointStr ? '&waypoints=' + waypointStr : '') +
+  for (let i = step; i < wps.length - step; i += step) mid.push(wps[i][0] + ',' + wps[i][1]);
+  const googleUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin +
+    '&destination=' + dest + (mid.length ? '&waypoints=' + mid.join('%7C') : '') +
     '&travelmode=driving';
 
-  log('setting iframe src');
-  document.getElementById('nav-iframe').src = mapsUrl;
-  log('iframe src set: ' + mapsUrl.slice(0,80));
+  document.getElementById('nav-distance').innerHTML =
+    '<span style="color:#94a3b8">' + activeRoute.distance + ' · ' + activeRoute.duration + '</span>' +
+    '&nbsp;&nbsp;<a href="' + googleUrl + '" target="_blank" ' +
+    'style="background:#1d4ed8;color:#fff;padding:5px 12px;border-radius:6px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;">' +
+    '↗ Google Maps</a>';
 
   // Render step-by-step instruction list
   const stepsDiv = document.getElementById('nav-steps');
